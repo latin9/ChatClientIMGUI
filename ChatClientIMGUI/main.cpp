@@ -18,7 +18,7 @@
 #define NAMESIZE 20
 #define PORT 4578
 #define SERVER_IP "61.83.251.78"
-#define NAME "Person111111"
+#define NAME "Person1133331"
 #define MAX_INPUT 512
 
 // Data
@@ -44,13 +44,16 @@ char message[BUFSIZE];
 
 struct ChatData {
     char InputBuf[MAX_INPUT];
-    std::vector<std::string> Items;
+    std::vector<std::string> sendItems;
+    std::vector<std::string> recvItems;
     SOCKET ConnectSocket;
     SOCKADDR_IN servAddr;
     HANDLE Mutex;
+    bool EnterEnable;
 
     ChatData() :
-        InputBuf{}
+        InputBuf{},
+        EnterEnable(false)
     {
 
     }
@@ -118,7 +121,6 @@ int main(int, char**)
 
     if (sendThread == 0 || recvThread == 0)
         ErrorHandling("쓰레드 생성 오류");
-
     // Main loop
     bool done = false;
     while (!done)
@@ -156,7 +158,7 @@ int main(int, char**)
             // Display items
             {
                 WaitForSingleObject(chatData.Mutex, INFINITE);
-                for (const auto& item : chatData.Items) {
+                for (const auto& item : chatData.recvItems) {
                     ImGui::TextUnformatted(item.c_str());
                 }
                 ReleaseMutex(chatData.Mutex);
@@ -168,10 +170,11 @@ int main(int, char**)
                 // Send input text
                 {
                     WaitForSingleObject(chatData.Mutex, INFINITE);
-                    chatData.Items.push_back(std::string(name) + " " + chatData.InputBuf);
+                    chatData.sendItems.push_back(std::string(name) + " " + chatData.InputBuf);
+                    chatData.EnterEnable = true;
                     ReleaseMutex(chatData.Mutex);
                 }
-                memset(chatData.InputBuf, 0, sizeof(chatData.InputBuf));
+                //memset(chatData.InputBuf, 0, sizeof(chatData.InputBuf));
             }
 
             ImGui::End();
@@ -186,8 +189,6 @@ int main(int, char**)
         g_pSwapChain->Present(1, 0); // Present with vsync
     }
 
-    WaitForSingleObject(sendThread, INFINITE);
-    WaitForSingleObject(recvThread, INFINITE);
 
     CloseHandle(sendThread);
     CloseHandle(recvThread);
@@ -203,7 +204,6 @@ int main(int, char**)
 
     return 0;
 }
-
 unsigned WINAPI SendMSG(void* arg)
 {
     auto* chatData = reinterpret_cast<ChatData*>(arg);
@@ -212,13 +212,16 @@ unsigned WINAPI SendMSG(void* arg)
 
     while (true)
     {
-        sprintf_s(nameMessage, "%s %s", name, chatData->InputBuf);
-
-        if (chatData->InputBuf[0], '\0')
+        if (chatData->EnterEnable)
         {
+            sprintf_s(nameMessage, "%s %s", name, chatData->InputBuf);
+
             send(chatData->ConnectSocket, nameMessage, (int)strlen(nameMessage), 0);
 
+            WaitForSingleObject(chatData->Mutex, INFINITE);
             memset(chatData->InputBuf, 0, sizeof(chatData->InputBuf)); // Clear input buffer
+            chatData->EnterEnable = false;
+            ReleaseMutex(chatData->Mutex); // Release mutex after modifying shared data
         }
     }
 
@@ -238,13 +241,14 @@ unsigned WINAPI RecvMSG(void* arg)
         nameMessage[strLen] = '\0';
 
         // Add received message to chat items
-        WaitForSingleObject(chatData->Mutex, INFINITE);
-        chatData->Items.push_back(nameMessage);
-        ReleaseMutex(chatData->Mutex);
+        WaitForSingleObject(chatData->Mutex, INFINITE); // Acquire mutex before accessing shared data
+        chatData->recvItems.push_back(nameMessage);
+        ReleaseMutex(chatData->Mutex); // Release mutex after modifying shared data
     }
 
     return 0;
 }
+
 
 void ErrorHandling(const char* message)
 {
