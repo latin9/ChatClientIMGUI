@@ -55,7 +55,6 @@ struct ChatData {
         InputBuf{},
         EnterEnable(false)
     {
-
     }
 };
 
@@ -174,7 +173,6 @@ int main(int, char**)
                     chatData.EnterEnable = true;
                     ReleaseMutex(chatData.Mutex);
                 }
-                //memset(chatData.InputBuf, 0, sizeof(chatData.InputBuf));
             }
 
             ImGui::End();
@@ -204,6 +202,7 @@ int main(int, char**)
 
     return 0;
 }
+
 unsigned WINAPI SendMSG(void* arg)
 {
     auto* chatData = reinterpret_cast<ChatData*>(arg);
@@ -212,17 +211,17 @@ unsigned WINAPI SendMSG(void* arg)
 
     while (true)
     {
+        WaitForSingleObject(chatData->Mutex, INFINITE);
         if (chatData->EnterEnable)
         {
             sprintf_s(nameMessage, "%s %s", name, chatData->InputBuf);
 
             send(chatData->ConnectSocket, nameMessage, (int)strlen(nameMessage), 0);
 
-            WaitForSingleObject(chatData->Mutex, INFINITE);
             memset(chatData->InputBuf, 0, sizeof(chatData->InputBuf)); // Clear input buffer
             chatData->EnterEnable = false;
-            ReleaseMutex(chatData->Mutex); // Release mutex after modifying shared data
         }
+        ReleaseMutex(chatData->Mutex); // Release mutex after modifying shared data
     }
 
     return 0;
