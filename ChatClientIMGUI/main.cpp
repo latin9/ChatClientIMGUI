@@ -17,9 +17,10 @@
 #define BUFSIZE 100
 #define NAMESIZE 20
 #define PORT 4578
-#define SERVER_IP "61.83.251.78"
-#define NAME "Person1133331"
+#define SERVER_IPPORT "61.83.251.78::4578"
+#define NAME "Person333"
 #define MAX_INPUT 512
+#define MAX_IP 25
 
 // Data
 static ID3D11Device* g_pd3dDevice = nullptr;
@@ -28,19 +29,13 @@ static IDXGISwapChain* g_pSwapChain = nullptr;
 static UINT g_ResizeWidth = 0, g_ResizeHeight = 0;
 static ID3D11RenderTargetView* g_mainRenderTargetView = nullptr;
 
-unsigned WINAPI SendMSG(void* arg);
-unsigned WINAPI RecvMSG(void* arg);
-void ErrorHandling(const char* message);
-
-// Forward declarations of helper functions
-bool CreateDeviceD3D(HWND hWnd);
-void CleanupDeviceD3D();
-void CreateRenderTarget();
-void CleanupRenderTarget();
-LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
 char name[NAMESIZE] = "[Default]";
 char message[BUFSIZE];
+char IPPort[MAX_IP];
+
+
+bool IPOpenEnable = true;
+bool ChatOpenenable = false;
 
 struct ChatData {
     char InputBuf[MAX_INPUT];
@@ -57,6 +52,20 @@ struct ChatData {
     {
     }
 };
+unsigned WINAPI SendMSG(void* arg);
+unsigned WINAPI RecvMSG(void* arg);
+void ErrorHandling(const char* message);
+
+// Forward declarations of helper functions
+bool CreateDeviceD3D(HWND hWnd);
+void CleanupDeviceD3D();
+void CreateRenderTarget();
+void CleanupRenderTarget();
+LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+void IPPortCheckWindow(HANDLE SendThread, HANDLE RecvThread, ChatData& chatData);
+void Chatwindow(ChatData& chatData);
+
 
 // Main code
 int main(int, char**)
@@ -103,23 +112,9 @@ int main(int, char**)
 
     // Set name and connect to the server
     sprintf_s(name, "[%s]", NAME);
-    chatData.ConnectSocket = socket(PF_INET, SOCK_STREAM, 0);
-    if (chatData.ConnectSocket == INVALID_SOCKET)
-        ErrorHandling("socket() error");
-
-    chatData.servAddr.sin_family = AF_INET;
-    chatData.servAddr.sin_port = htons(PORT);
-    chatData.servAddr.sin_addr.s_addr = inet_addr(SERVER_IP);
-
-    if (connect(chatData.ConnectSocket, (SOCKADDR*)&chatData.servAddr, sizeof(chatData.servAddr)) == SOCKET_ERROR)
-        ErrorHandling("connect() error");
-
-    // Create sender and receiver threads
-    HANDLE sendThread = (HANDLE)_beginthreadex(NULL, 0, &SendMSG, &chatData, 0, nullptr);
-    HANDLE recvThread = (HANDLE)_beginthreadex(NULL, 0, &RecvMSG, &chatData, 0, nullptr);
-
-    if (sendThread == 0 || recvThread == 0)
-        ErrorHandling("쓰레드 생성 오류");
+    HANDLE sendThread = nullptr;
+    HANDLE recvThread = nullptr;
+    
     // Main loop
     bool done = false;
     while (!done)
@@ -147,36 +142,9 @@ int main(int, char**)
         ImGui_ImplWin32_NewFrame();
 
         ImGui::NewFrame();
+        IPPortCheckWindow(sendThread, recvThread, chatData);
 
-        bool open = true;
-        if (ImGui::Begin("Chat Window", &open))
-        {
-            ImGui::Text("Chat");
-            ImGui::Separator();
-
-            // Display items
-            {
-                WaitForSingleObject(chatData.Mutex, INFINITE);
-                for (const auto& item : chatData.recvItems) {
-                    ImGui::TextUnformatted(item.c_str());
-                }
-                ReleaseMutex(chatData.Mutex);
-            }
-
-            // Input field
-            if (ImGui::InputText("Input", chatData.InputBuf, IM_ARRAYSIZE(chatData.InputBuf), ImGuiInputTextFlags_EnterReturnsTrue))
-            {
-                // Send input text
-                {
-                    WaitForSingleObject(chatData.Mutex, INFINITE);
-                    chatData.sendItems.push_back(std::string(name) + " " + chatData.InputBuf);
-                    chatData.EnterEnable = true;
-                    ReleaseMutex(chatData.Mutex);
-                }
-            }
-
-            ImGui::End();
-        }
+        Chatwindow(chatData);
 
         ImGui::Render();
         const float clear_color_with_alpha[4] = { 0.45f, 0.55f, 0.60f, 1.00f };
@@ -253,7 +221,7 @@ void ErrorHandling(const char* message)
 {
     fputs(message, stderr);
     fputc('\n', stderr);
-    exit(1);
+    //exit(1);
 }
 
 // Helper functions
@@ -342,4 +310,95 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
         return 0;
     }
     return ::DefWindowProcW(hWnd, msg, wParam, lParam);
+}
+
+void IPPortCheckWindow(HANDLE SendThread, HANDLE RecvThread, ChatData& chatData)
+{
+    if (IPOpenEnable)
+    {
+        if (ImGui::Begin("IP::Port Check"))
+        {
+            if (ImGui::InputText("Input", IPPort, IM_ARRAYSIZE(IPPort), ImGuiInputTextFlags_EnterReturnsTrue))
+            {
+                char* next_token = NULL;
+                char* ip = strtok_s(IPPort, "::", &next_token);
+                char* port = strtok_s(NULL, "::", &next_token);
+
+                chatData.ConnectSocket = socket(PF_INET, SOCK_STREAM, 0);
+                if (chatData.ConnectSocket == INVALID_SOCKET)
+                {
+                    MessageBox(nullptr, L"socket() Error", L"socket() Error", MB_OK);
+                }
+
+
+                if (ip != nullptr && port != nullptr)
+                {
+                    chatData.servAddr.sin_family = AF_INET;
+                    chatData.servAddr.sin_port = htons(atoi(port));
+                    chatData.servAddr.sin_addr.s_addr = inet_addr(ip);
+
+                    if (connect(chatData.ConnectSocket, (SOCKADDR*)&chatData.servAddr, sizeof(chatData.servAddr)) == SOCKET_ERROR)
+                    {
+                        MessageBox(nullptr, L"connect() Error", L"connect() Error", MB_OK);
+                        memset(IPPort, 0, sizeof(IPPort)); // Clear input buffer
+                        closesocket(chatData.ConnectSocket);
+                        chatData.ConnectSocket = INVALID_SOCKET; // set socket back to an invalid state
+                    }
+                    else
+                    {
+                        // Create sender and receiver threads
+                        SendThread = (HANDLE)_beginthreadex(NULL, 0, &SendMSG, &chatData, 0, nullptr);
+                        RecvThread = (HANDLE)_beginthreadex(NULL, 0, &RecvMSG, &chatData, 0, nullptr);
+
+                        if (SendThread == 0 || RecvThread == 0)
+                            ErrorHandling("쓰레드 생성 오류");
+
+                        ChatOpenenable = true;
+                        IPOpenEnable = false;
+                    }
+                }
+                else
+                {
+                    MessageBox(nullptr, L"IP::Port Error", L"IP::Port Error", MB_OK);
+                    memset(IPPort, 0, sizeof(IPPort)); // Clear input buffer
+                }
+            }
+
+            ImGui::End();
+        }
+    }
+}
+void Chatwindow(ChatData& chatData)
+{
+    if (ChatOpenenable)
+    {
+        if (ImGui::Begin("Chat Window"))
+        {
+            ImGui::Text("Chat");
+            ImGui::Separator();
+
+            // Display items
+            {
+                WaitForSingleObject(chatData.Mutex, INFINITE);
+                for (const auto& item : chatData.recvItems) {
+                    ImGui::TextUnformatted(item.c_str());
+                }
+                ReleaseMutex(chatData.Mutex);
+            }
+
+            // Input field
+            if (ImGui::InputText("Input", chatData.InputBuf, IM_ARRAYSIZE(chatData.InputBuf), ImGuiInputTextFlags_EnterReturnsTrue))
+            {
+                // Send input text
+                {
+                    WaitForSingleObject(chatData.Mutex, INFINITE);
+                    chatData.sendItems.push_back(std::string(name) + " " + chatData.InputBuf);
+                    chatData.EnterEnable = true;
+                    ReleaseMutex(chatData.Mutex);
+                }
+            }
+
+            ImGui::End();
+        }
+    }
 }
