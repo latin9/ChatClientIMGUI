@@ -142,6 +142,7 @@ int main(int, char**)
         ImGui_ImplWin32_NewFrame();
 
         ImGui::NewFrame();
+
         IPPortCheckWindow(sendThread, recvThread, chatData);
 
         Chatwindow(chatData);
@@ -155,9 +156,12 @@ int main(int, char**)
         g_pSwapChain->Present(1, 0); // Present with vsync
     }
 
-
-    CloseHandle(sendThread);
-    CloseHandle(recvThread);
+    if (sendThread || recvThread) {
+        CloseHandle(sendThread);
+        CloseHandle(recvThread);
+        sendThread = NULL;
+        recvThread = NULL;
+    }
 
     // Cleanup
     ImGui_ImplDX11_Shutdown();
@@ -166,6 +170,10 @@ int main(int, char**)
 
     CleanupDeviceD3D();
     ::DestroyWindow(hwnd);
+
+    // WinSock Á¾·á
+    WSACleanup();
+
     ::UnregisterClassW(wc.lpszClassName, wc.hInstance);
 
     return 0;
@@ -205,7 +213,8 @@ unsigned WINAPI RecvMSG(void* arg)
         // Receive message from the server
         int strLen = recv(chatData->ConnectSocket, nameMessage, NAMESIZE + MAX_INPUT - 1, 0);
 
-        nameMessage[strLen] = '\0';
+        if (strLen > 0)
+            nameMessage[strLen] = '\0';
 
         // Add received message to chat items
         WaitForSingleObject(chatData->Mutex, INFINITE); // Acquire mutex before accessing shared data
