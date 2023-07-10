@@ -18,7 +18,7 @@
 #define NAMESIZE 20
 #define PORT 4578
 #define SERVER_IPPORT "61.83.251.78::4578"
-#define NAME "Person333"
+#define NAME "JYS"
 #define MAX_INPUT 512
 #define MAX_IP 25
 
@@ -164,7 +164,7 @@ int main(int, char**)
     CloseHandle(sendThread);
     CloseHandle(recvThread);
 
-    // WinSock Á¾·á
+    // quit winsock
     WSACleanup();
 
     // Cleanup
