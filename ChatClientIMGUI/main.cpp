@@ -33,7 +33,7 @@ char name[NAMESIZE] = "[Default]";
 char message[BUFSIZE];
 char IPPort[MAX_IP];
 
-
+bool ExitFlag = false;
 bool IPOpenEnable = true;
 bool ChatOpenenable = false;
 
@@ -117,7 +117,7 @@ int main(int, char**)
     
     // Main loop
     bool done = false;
-    while (!done)
+    while (!ExitFlag)
     {
         MSG msg;
         while (::PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE))
@@ -156,12 +156,16 @@ int main(int, char**)
         g_pSwapChain->Present(1, 0); // Present with vsync
     }
 
-    if (sendThread || recvThread) {
-        CloseHandle(sendThread);
-        CloseHandle(recvThread);
-        sendThread = NULL;
-        recvThread = NULL;
-    }
+    ExitFlag = true;
+
+    WaitForSingleObject(sendThread, INFINITE);
+    WaitForSingleObject(recvThread, INFINITE);
+
+    CloseHandle(sendThread);
+    CloseHandle(recvThread);
+
+    // WinSock 종료
+    WSACleanup();
 
     // Cleanup
     ImGui_ImplDX11_Shutdown();
@@ -170,9 +174,6 @@ int main(int, char**)
 
     CleanupDeviceD3D();
     ::DestroyWindow(hwnd);
-
-    // WinSock 종료
-    WSACleanup();
 
     ::UnregisterClassW(wc.lpszClassName, wc.hInstance);
 
@@ -208,12 +209,12 @@ unsigned WINAPI RecvMSG(void* arg)
     auto* chatData = reinterpret_cast<ChatData*>(arg);
     char nameMessage[NAMESIZE + MAX_INPUT];
 
-    while (true)
+    while (!ExitFlag)
     {
         // Receive message from the server
         int strLen = recv(chatData->ConnectSocket, nameMessage, NAMESIZE + MAX_INPUT - 1, 0);
 
-        if (strLen > 0)
+        if (strLen >= 0)
             nameMessage[strLen] = '\0';
 
         // Add received message to chat items
